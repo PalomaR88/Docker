@@ -1,4 +1,4 @@
-# Creación de contendores
+## Creación de contendores
 ~~~
 mkdir proyecto
 cd proyecto/
@@ -30,7 +30,7 @@ mi_pagina/aplicacionweb   v1                  c201cc40a17e        14 seconds ago
 debian                    latest              a8797652cfd9        4 days ago          114MB
 ~~~
 
-# Cambiar la página
+## Cambiar la página
 En este caso, por las opciones de la imagen que copia ./public_html, solo hay que poner el comando:
 ~~~
 sudo docker build -t mi_pagina/aplicacionweb:v1 .
@@ -63,5 +63,53 @@ debian                    latest              a8797652cfd9        4 days ago    
 ~~~
 
 ~~~
-sudo docker run -d --name mi_pagina -p 8080:80 mipag:v1
+sudo docker run -d --name mipag -p 8080:80 mi_pagina/aplicacionweb:v1
+~~~
+
+## cración de una nueva versión
+~~~
+sudo docker build -t mi_pagina/aplicacionweb:v2 .
+~~~
+
+~~~
+vagrant@servidor:~/Docker/proyecto$ sudo docker images
+REPOSITORY                TAG                 IMAGE ID            CREATED             SIZE
+mi_pagina/aplicacionweb   v1                  e6782b8f4f53        2 minutes ago       226MB
+mi_pagina/aplicacionweb   v2                  e6782b8f4f53        2 minutes ago       226MB
+debian                    latest              a8797652cfd9        4 days ago          114MB
+~~~
+
+Se va a crear una cuenta en Docker Hub para subir la imagen:
+~~~
+ docker login
+Login with your Docker ID to push and pull images from Docker Hub. If you don't have a Docker ID, head over to https://hub.docker.com to create one.
+Username: palomar88
+Password: 
+WARNING! Your password will be stored unencrypted in /root/.docker/config.json.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+
+Login Succeeded
+~~~
+
+Y se sube la imagen:
+~~~
+docker push palomar88/mi_pagina:v2
+~~~
+
+Y en el entorno de producción:
+~~~
+docker login
+docker pull palomar88/mi_pagina:v2
+~~~
+
+## Docker con php
+~~~
+FROM debian
+RUN apt-get update -y && apt-get install -y \
+    apache2 php libapache2-mod-php \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && rm /var/www/html/index.html
+COPY ./public_html /var/www/html/
+ENTRYPOINT ["/usr/sbin/apache2ctl", "-D", "FOREGROUND"]
 ~~~
