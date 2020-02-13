@@ -141,4 +141,227 @@ vagrant@servidor:~$ sudo docker exec servidor_wp cat wp-config.php
 ...
 ~~~
 
+> Esta forma de usar link para interconectar contenedores está en desuso y no es recomendable.
+
+### Creación de redes docker
+Si no se indica, por defecto, se crea un bridge:
+~~~
+docker network create mired
+~~~
+
+Para ver las opciones de crear redes:
+~~~
+docker network
+~~~
+
+Opciones para conectar al contenedor a una red concreta:
+~~~
+--network <nombreRed>
+~~~
+
+> El ejercicio anteriores, correstamente, sería:
+Se crea una red:
+~~~
+vagrant@servidor:~$ sudo docker network create red_wp
+c7609efbfd737d871ca9c0dceb94eac69cfde54677ac269e0d97ad62838a58aa
+~~~
+
+Se crea la máquina para la base de datos:
+~~~
+vagrant@servidor:~$ sudo docker run -d --name servidor_mysql --network red_wp -e MYSQL_DATABASE=bd_wp -e MYSQL_USER=user_wp -e MYSQL_PASSWORD=asdasd -e MYSQL_ROOT_PASSWORD=asdasd mariadb
+f5a793b942d4ee6d241159927c6b9bcc310641a118b28cdd097debb8a0e07023
+~~~
+
+Se crea la máquina con la aplicación wordpress:
+~~~
+vagrant@servidor:~$ sudo docker run -d --name servidor_wp --network red_wp -e WORDPRESS_DB_HOST=servidor_mysql -e WORDPRESS_DB_USER=user_wp -e WORDPRESS_DB_PASSWORD=asdasd -e WORDPRESS_DB_NAME=bd_wp -p 80:80  wordpress
+f576478a3a0a396cc272cacaf0d7b6670c518589abe49bb7db4900804e0b5df3
+~~~
+
+### Almacenamiento persistente en los contenedores
+#### Contenedor mariadb con almacenamiento persistente
+Se guarda la información de la base de datos en un volumen persistente:
+~~~
+vagrant@servidor:~$ sudo docker run --name some-mysql -v /opt/mysql:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=asdasd -d mariadb
+3958f0c03913a2fb9c4cfd36870917931b88bee70a8b31b2a8956618997f2e3e
+~~~
+
+Se comprueba que se ha creado correctamente:
+~~~
+vagrant@servidor:~$ ls /opt/mysql/
+aria_log.00000001  ibdata1      ibtmp1             performance_schema
+aria_log_control   ib_logfile0  multi-master.info
+ib_buffer_pool     ib_logfile1  mysql
+~~~
+
+Se crea una base de datos:
+~~~
+vagrant@servidor:~$ sudo docker exec -it some-mysql bash
+root@3958f0c03913:/# mysql -u root -p -h localhost
+Enter password: 
+Welcome to the MariaDB monitor.  Commands end with ; or \g.
+Your MariaDB connection id is 8
+Server version: 10.4.12-MariaDB-1:10.4.12+maria~bionic mariadb.org binary distribution
+
+Copyright (c) 2000, 2018, Oracle, MariaDB Corporation Ab and others.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+MariaDB [(none)]> create database dbtest;
+Query OK, 1 row affected (0.004 sec)
+~~~
+
+Otra forma de conectarse, se crea un contenedor que se borre tras probar lo que se quiera probar con --rm:
+~~~
+vagrant@servidor:~$ sudo docker run -it --rm --link some-mysql:mysql mariadb mysql -hmysql -uroot -p
+Enter password: 
+Welcome to the MariaDB monitor.  Commands end with ; or \g.
+Your MariaDB connection id is 9
+Server version: 10.4.12-MariaDB-1:10.4.12+maria~bionic mariadb.org binary distribution
+
+Copyright (c) 2000, 2018, Oracle, MariaDB Corporation Ab and others.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+MariaDB [(none)]> 
+~~~
+
+- Comprobación:
+Se simula un fallo:
+~~~
+vagrant@servidor:~$ sudo docker rm -f some-mysql 
+some-mysql
+~~~
+
+Y se crea otro contenedor y se comprueba que la base de datos sigue existiendo:
+~~~
+vagrant@servidor:~$ sudo docker run --name some-mysql2 -v /opt/mysql:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=asdasd -d mariadb
+dec236ee5b7b2b10a56f678ccb2ecc1e944f67eb7d1148e11d9827766587909a
+
+vagrant@servidor:~$ docker exec -it some-mysql2 bash
+Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get http://%2Fvar%2Frun%2Fdocker.sock/v1.39/containers/some-mysql2/json: dial unix /var/run/docker.sock: connect: permission denied
+vagrant@servidor:~$ sudo docker exec -it some-mysql2 bash
+root@dec236ee5b7b:/# mysql -u root -p -h localhost
+Enter password: 
+Welcome to the MariaDB monitor.  Commands end with ; or \g.
+Your MariaDB connection id is 8
+Server version: 10.4.12-MariaDB-1:10.4.12+maria~bionic mariadb.org binary distribution
+
+Copyright (c) 2000, 2018, Oracle, MariaDB Corporation Ab and others.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+MariaDB [(none)]> show databases;
++--------------------+
+| Database           |
++--------------------+
+| dbtest             |
+| information_schema |
+| mysql              |
+| performance_schema |
++--------------------+
+4 rows in set (0.004 sec)
+
+MariaDB [(none)]> 
+~~~
+
+
+
+### Instalación de wordpress de forma persistente
+Al instalar el wordpress en el ejercicio anterior, si eliminamos el contenedor todos los datos del wordpress se perdían (directorio wp-content). Por lo tanto vamos a crear el contenedor de wordpress con un volumen asociado:
+~~~
+docker run -d --name servidor_mysql --network red_wp -v /opt/mysql_wp:/var/lib/mysql -e MYSQL_DATABASE=bd_wp -e MYSQL_USER=user_wp -e MYSQL_PASSWORD=asdasd -e MYSQL_ROOT_PASSWORD=asdasd mariadb
+
+docker run -d --name servidor_wp --network red_wp -v /opt/wordpress:/var/www/html/wp-content -e WORDPRESS_DB_HOST=servidor_mysql -e WORDPRESS_DB_USER=user_wp -e WORDPRESS_DB_PASSWORD=asdasd -e WORDPRESS_DB_NAME=bd_wp -p 80:80  wordpress
+~~~
+
+
+### Creación de imágenes con volúmenes desde Dockerfile
+Cuando creamos una imagen desde Dockerfile podemos indicar la creación de volúmenes: Gestionando el almacenamiento docker con Dockerfile.
+
+## Docker-compose
+Para gestionar contenedores.
+
+### Intralación 
+~~~
+vagrant@servidor:~$ sudo apt install docker-compose
+~~~
+
+También se puede con pip en un entorno virtual:
+~~~
+python3 -m venv docker-compose
+source docker-compose/bin/activate
+(docker-compose) ~# pip install docker-compose
+~~~
+
+### Configuración de docker-compose
+El fichero **docker-compose.yml** se define el escenario. Docker-compose se debe ejecutar en el direcotorio donde este este fichero. Para la ejecución de wordpress persistente podríamos tener el sigueinte contenido:
+
+En el fichero docker-compose.yml vamos a definir el escenario. El programa docker-compose se debe ejecutar en el directorio donde este ese fichero. Por ejemplo para la ejecución de wordpress persistente podríamos tener un fichero con el siguiente contenido:
+~~~
+version: '3.1'
+
+services:
+
+  wordpress:
+    container_name: servidor_wp
+    image: wordpress
+    restart: always
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: user_wp
+      WORDPRESS_DB_PASSWORD: asdasd
+      WORDPRESS_DB_NAME: bd_wp
+    ports:
+      - 80:80
+    volumes:
+      - /opt/wordpress:/var/www/html/wp-content
+
+  db:
+    container_name: servidor_mysql
+    image: mariadb
+    restart: always
+    environment:
+      MYSQL_DATABASE: bd_wp
+      MYSQL_USER: user_wp
+      MYSQL_PASSWORD: asdasd
+      MYSQL_ROOT_PASSWORD: asdasd
+    volumes:
+      - /opt/mysql_wp:/var/lib/mysql
+~~~
+
+Con docker-compose se crea una nueva red definida por el usuario donde se contectan los contenedores, por lo tanto se están enlazando. Pero no comparten las variables de entorno. 
+
+~~~
+vagrant@servidor:~/compose$ sudo docker-compose up -d
+Creating servidor_mysql ... done
+Creating servidor_wp    ... done
+~~~
+
+Listar:
+~~~
+vagrant@servidor:~/compose$ sudo docker-compose ps
+     Name                  Command              State         Ports       
+--------------------------------------------------------------------------
+servidor_mysql   docker-entrypoint.sh mysqld    Up      3306/tcp          
+servidor_wp      docker-entrypoint.sh apach     Up      0.0.0.0:80->80/tcp
+                 ...         
+~~~
+
+Parar:
+~~~
+vagrant@servidor:~/compose$ sudo docker-compose stop 
+Stopping servidor_wp    ... done
+Stopping servidor_mysql ... done
+~~~
+
+Borrar:
+~~~
+vagrant@servidor:~/compose$ sudo docker-compose rm
+Going to remove servidor_wp, servidor_mysql
+Are you sure? [yN] y
+Removing servidor_wp    ... done
+Removing servidor_mysql ... done
+~~~
+
 
